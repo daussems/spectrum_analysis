@@ -15,48 +15,86 @@ pro ps_plot_Kyri,ver ; <-- 0: IDL plot, 1: PS plot
 ;  
 
    ;  Open common variables:
-    @common_intens_data
-    @common_intensid
+    @common_intens_data_test
+   ; @common_intensid
     
     
-    ;******************] INITIALIZING PARAMETERS [*******************
+;******************] INITIALIZING PARAMETERS [*******************
     
     ; set up directory
-    home_path = '/home/emc/aussems/My Documents/Experiments/Intensity_peak' 
+    home_path = '/home/emc/aussems/My Documents/Experiments/spectrum_analysis2/' 
     cd, home_path 
+    file_light_sphere = home_path+'light_sphere.dat'
+    calibration_file = home_path + '2014-11-05 12_46_59 Magnum_Calibration_Middle_06156.1_5000ms_Window_1.9106E-5A 61.spe'
+    calibration_background_file = home_path + '2014-11-05 12_49_05 Magnum_BCK_Middle_06156.1_5000ms_Window 62.spe'
+    
     ; information on lines
-    energy =  [3.40809, 5.36244,  3.26913,  5.14527,  3.25208,  3.24705,  5.33555,  2.65994,  3.24705,  2.97124,  2.97124]
-    gi=       [7,       9,        5,        7,        5,        7,        11,       3,        7,        5,        5]
-    Ai=       [1E7,     9.3E6,    3.04E6,   9.3E6,    1.24E7,   3.6E6,    5.4E6,    1000000,  1.4E6,    272000,   1.9E6]
+    lambda = [397.007,388.905,383.538,379.790,377.063,375.015,373.435,372.194,371.197]    
+    gi = [72,98,128,162,200,242,288,338,392]
+    Ai = [9.73E+05,4.39E+05,2.22E+05,1.22E+05,7.12E+04,4.40E+04,2.83E+04,1.89E+04,1.30E+04]
+    energy = [13.22,13.32,13.39,13.43,13.46,13.49,13.51,13.52,13.53]
+    
     ; over-write information form spe_button
-    spefiles = ['/home/emc/aussems/My Documents/Experiments/Intensity_peak' $
-                '/home/emc/aussems/My Documents/Experiments/Intensity_peak' 
-               ]
-    peak    = [ 114,147, 260, 264, 278, 284, 288, 551, 568, 626, 691 ]  
+    fname = home_path + '2014-10-31 13_30_04 Magnum_D_10000ms 17.spe'
+    background_file = home_path + '2014-10-31 13_29_36 Magnum_D_BKG_10000ms 16.spe'
+    peak    = [1469,1174,992,872,788,727,680,645,616]
+    
     ; spectral information
-    int_time =  ; integration time
-    L = 1.6e-2
-    pxlwv_A = 0.13318
-    pxlwv_B = 392.41898
+    int_time_calibration = 5000e-3 ; [s]
+    int_time_experiment = 500e-3 ; [s] 
+    L = 1.6e-2 ;[m] plasma depth
+    
+    ; calbration information
+    power_integrating_sphere_manufacture = 3.452e-5  ; [A]
+    power_integrating_sphere_calibration = 1.9106e-5  ; [A]
+    factor_power = power_integrating_sphere_manufacture / power_integrating_sphere_calibration   
+    grating_setting = '06156.1'
+    pxlwv_A = 0.0283 ; wavelength = pxlwv_A * #pixel + pxlwv_B  at grating_setting '06156.1'
+    pxlwv_B = 354.65
+    pixel_per_fiber = 1385./40.
+    pixels_per_datapoint = round(1385./10); 10 datapoints (so 4 fibres per datapoint)
+    n_pixel = 2048
+    
+    
+    ;calculation solid angle
+    surface_grating = 104. ;mm
+    focal_length_spectrometer = 1000. ;mm
+    fnum_spectrometer = surface_grating / focal_length_spectrometer
+    fnum_outgoing = 0.9*fnum_spectrometer  ;= 10 % smaller due to fiber
+    magnification_lens = 5.11
+    fnum_source = 1./5.*fnum_outgoing ; 
+    solid_angle = 1./4.*!pi*fnum_source^2 ; srad
+    
+    ; calculation surface area 
+    relative_frac_light_fibres = 765./1385. ; ~0.55
+    distance_fibre_array = 18 ;mm
+    area_source = !pi*(2.*2.54e-2/2.)^2 ;[m^2] ; A = pi*r^2
+    
+    
     ; display options
-    min_x    = 0
-    max_x    = 714
+    min_x    = 0      ; start pixel
+    max_x    = 2048-1 ; end pixel
     
-    ;******************] LOAD DATA [*******************
     
-    ; load file name
-    fname = spefiles[i]
+    
+;******************] LOAD DATA [*******************
+    
     
     ; load data
-    read_winx, spefiles[i], data, info=info1
-    
+    read_winx, fname, data, info=info1
+  
     ; calculate intensity calibration factor
-    calibration, correct_f
+
+    calibration,n_pixel,power_integrating_sphere,factor_power,file_light_sphere,calibration_file,calibration_background_file,int_time_calibration,correct_area
+    
+    stop
     
     ; correct for arc duration, and emission area
     data=data/int_time*correct_f
     
-    ;data=data/(((t_arc)-0.1)*1e-3)*correct_f*column_area/emis_area
+
+for fiber=0,9 do begin
+  
 
     ;**************] FIND TRANSITION LINES [*************    
     
@@ -87,16 +125,19 @@ pro ps_plot_Kyri,ver ; <-- 0: IDL plot, 1: PS plot
     ;*******************] Plot Spectrum & Boltzmann  [*********************
     
     plot_graphs,fname, data, peakk, peak, energy, y_r, energyk, y_rk, A, B, ver, min_x, max_x,T_e,n_e,err_Te,err_ne
-
     
-    ;*******************] Save data  [*********************
-    
-    if ver eq 1 then begin
-    ; save everything into file
-    save_boltzmann_data, i, energy, y_r, energyk, y_rk, A, B, SI, T_e, err_Te,n_e, err_ne, noise, L, peak, fname, intensity, column_area, gi,Ai
-    endif
-
   
+endfor
+
+    
+  
+;*******************] Save data  [*********************
+;   
+;      if ver eq 1 then begin
+;    ; save everything into file
+;    save_boltzmann_data, i, energy, y_r, energyk, y_rk, A, B, SI, T_e, err_Te,n_e, err_ne, noise, L, peak, fname, intensity, column_area, gi,Ai
+;    endif
+
 end
 
 
